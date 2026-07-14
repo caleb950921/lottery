@@ -1,0 +1,109 @@
+﻿<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>抽獎後台管理 (Firebase版)</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #e0f7fa; padding: 20px; }
+        .container { background: white; max-width: 600px; margin: 0 auto; padding: 20px; border-radius: 10px; }
+        .form-group { margin-bottom: 15px; }
+        input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
+        button { padding: 10px 15px; cursor: pointer; border: none; background: #00796b; color: white; border-radius: 5px; margin-right: 5px;}
+        .danger { background: #c62828; }
+        ul { list-style-type: none; padding: 0; }
+        li { background: #eee; margin: 5px 0; padding: 10px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>管理員專區</h1>
+        
+        <h3>新增參加者</h3>
+        <div class="form-group">
+            <label>姓名:</label>
+            <input type="text" id="pName" placeholder="輸入姓名">
+        </div>
+        <div class="form-group">
+            <label>號碼 (0~50，請輸入6個數字，以半形逗號分隔):</label>
+            <input type="text" id="pNumbers" placeholder="例如: 5, 12, 33, 41, 2, 50">
+        </div>
+        <button id="btnAdd">登記參加者</button>
+
+        <hr>
+
+        <h3>遊戲控制</h3>
+        <button id="btnDraw">進行抽獎 (產生6個隨機號碼)</button>
+        <button id="btnReset" class="danger">重新開始遊戲</button>
+
+        <h3>已登記名單</h3>
+        <ul id="participantList"></ul>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
+        import { getDatabase, ref, set, push, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+
+        // ⚠️ 請將這裡替換成你在 Firebase 控制台拿到的金鑰！！！
+      const firebaseConfig = {
+  apiKey: "AIzaSyCF1Xi6B-xSiCeeAQauA3YQrlfC9nAz5TM",
+  authDomain: "lottery-cea2d.firebaseapp.com",
+  databaseURL: "https://lottery-cea2d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "lottery-cea2d",
+  storageBucket: "lottery-cea2d.firebasestorage.app",
+  messagingSenderId: "1085744042767",
+  appId: "1:1085744042767:web:ef2967f50d9e8b4aafe47a",
+  measurementId: "G-DCKN0TWXJY"
+};
+        // 初始化 Firebase
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // 登記參加者
+        document.getElementById('btnAdd').addEventListener('click', () => {
+            const name = document.getElementById('pName').value.trim();
+            const numStr = document.getElementById('pNumbers').value.trim();
+            if(!name || !numStr) return alert('請填寫完整資訊！');
+
+            const numbers = numStr.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n >= 0 && n <= 50);
+            if(new Set(numbers).size !== 6) return alert('請確認輸入了 6 個不重複且介於 0~50 之間的數字！');
+
+            // 將資料推送到 Firebase 上的 lottery/participants 節點
+            push(ref(db, 'lottery/participants'), { name, numbers });
+            
+            document.getElementById('pName').value = '';
+            document.getElementById('pNumbers').value = '';
+        });
+
+        // 進行抽獎
+        document.getElementById('btnDraw').addEventListener('click', () => {
+            if(!confirm('確定要開獎嗎？')) return;
+            let nums = new Set();
+            while(nums.size < 6) nums.add(Math.floor(Math.random() * 51));
+            
+            // 將開獎號碼寫入 Firebase
+            set(ref(db, 'lottery/drawnNumbers'), Array.from(nums));
+        });
+
+        // 重新遊戲
+        document.getElementById('btnReset').addEventListener('click', () => {
+            if(!confirm('警告：這將清空所有紀錄！')) return;
+            // 清空 Firebase 上的 lottery 節點
+            set(ref(db, 'lottery'), null);
+        });
+
+        // 監聽名單變動，更新畫面
+        onValue(ref(db, 'lottery/participants'), (snapshot) => {
+            const list = document.getElementById('participantList');
+            list.innerHTML = '';
+            if(snapshot.exists()) {
+                const data = snapshot.val();
+                Object.values(data).forEach(p => {
+                    const li = document.createElement('li');
+                    li.innerText = `${p.name} - [${p.numbers.join(', ')}]`;
+                    list.appendChild(li);
+                });
+            }
+        });
+    </script>
+</body>
+</html>
