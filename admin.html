@@ -1,18 +1,24 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
-    <title>抽獎後台管理 (Firebase版)</title>
+    <title>抽獎後台管理 (手動開獎版)</title>
     <style>
         body { font-family: Arial, sans-serif; background: #e0f7fa; padding: 20px; }
         .container { background: white; max-width: 600px; margin: 0 auto; padding: 20px; border-radius: 10px; }
         .form-group { margin-bottom: 15px; }
         input[type="text"] { width: 100%; padding: 8px; box-sizing: border-box; }
-        button { padding: 10px 15px; cursor: pointer; border: none; background: #00796b; color: white; border-radius: 5px; margin-right: 5px;}
+        button { padding: 10px 15px; cursor: pointer; border: none; background: #00796b; color: white; border-radius: 5px; margin-right: 5px; margin-bottom: 10px; }
+        .btn-random { background: #f39c12; }
+        .btn-random:hover { background: #d68910; }
         .danger { background: #c62828; }
+        .danger:hover { background: #922b21; }
         ul { list-style-type: none; padding: 0; }
         li { background: #eee; margin: 5px 0; padding: 10px; border-radius: 5px; }
+        .control-box { background: #f9f9f9; padding: 15px; border: 1px dashed #ccc; border-radius: 5px; margin-bottom: 15px; }
     </style>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 </head>
 <body>
     <div class="container">
@@ -31,20 +37,28 @@
 
         <hr>
 
-        <h3>遊戲控制</h3>
-        <button id="btnDraw">進行抽獎 (產生6個隨機號碼)</button>
-        <button id="btnReset" class="danger">重新開始遊戲</button>
+        <h3>遊戲控制 (開獎區)</h3>
+        
+        <div class="control-box">
+            <div class="form-group">
+                <label style="color: #d32f2f; font-weight: bold;">手動設定開獎號碼 (輸入6個數字):</label>
+                <input type="text" id="manualDrawnNumbers" placeholder="例如: 8, 15, 24, 36, 42, 50">
+            </div>
+            <button id="btnManualDraw">發布手動開獎號碼</button>
+        </div>
+
+        <button id="btnDraw" class="btn-random">或者...由系統隨機抽獎</button>
+        <button id="btnReset" class="danger">重新開始遊戲 (清空資料庫)</button>
+
+        <hr>
 
         <h3>已登記名單</h3>
         <ul id="participantList"></ul>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getDatabase, ref, set, push, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
-
-        // ⚠️ 請將這裡替換成你在 Firebase 控制台拿到的金鑰！！！
-      const firebaseConfig = {
+    <script>
+        // ⚠️ 請替換成你專屬的金鑰 (記得保留 databaseURL)
+       const firebaseConfig = {
   apiKey: "AIzaSyCF1Xi6B-xSiCeeAQauA3YQrlfC9nAz5TM",
   authDomain: "lottery-cea2d.firebaseapp.com",
   databaseURL: "https://lottery-cea2d-default-rtdb.asia-southeast1.firebasedatabase.app",
@@ -55,44 +69,79 @@
   measurementId: "G-DCKN0TWXJY"
 };
         // 初始化 Firebase
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
+        var db;
+        try {
+            firebase.initializeApp(firebaseConfig);
+            db = firebase.database();
+        } catch (error) {
+            alert("Firebase 初始化失敗，錯誤原因：" + error.message);
+        }
 
         // 登記參加者
-        document.getElementById('btnAdd').addEventListener('click', () => {
+        document.getElementById('btnAdd').addEventListener('click', function() {
             const name = document.getElementById('pName').value.trim();
             const numStr = document.getElementById('pNumbers').value.trim();
             if(!name || !numStr) return alert('請填寫完整資訊！');
 
             const numbers = numStr.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n >= 0 && n <= 50);
-            if(new Set(numbers).size !== 6) return alert('請確認輸入了 6 個不重複且介於 0~50 之間的數字！');
-
-            // 將資料推送到 Firebase 上的 lottery/participants 節點
-            push(ref(db, 'lottery/participants'), { name, numbers });
             
-            document.getElementById('pName').value = '';
-            document.getElementById('pNumbers').value = '';
+            if(numbers.length !== 6 || new Set(numbers).size !== 6) {
+                return alert('請確認輸入了 6 個不重複且介於 0~50 之間的數字！');
+            }
+
+            db.ref('lottery/participants').push({ name: name, numbers: numbers })
+                .then(() => {
+                    alert('🎉 登記成功！');
+                    document.getElementById('pName').value = '';
+                    document.getElementById('pNumbers').value = '';
+                })
+                .catch((error) => alert("❌ 登記失敗！錯誤：" + error.message));
         });
 
-        // 進行抽獎
-        document.getElementById('btnDraw').addEventListener('click', () => {
-            if(!confirm('確定要開獎嗎？')) return;
+        // 🟢 新增功能：手動開獎
+        document.getElementById('btnManualDraw').addEventListener('click', function() {
+            const numStr = document.getElementById('manualDrawnNumbers').value.trim();
+            if(!numStr) return alert('請輸入你想開獎的號碼！');
+
+            // 格式化並檢查輸入的數字
+            const numbers = numStr.split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n >= 0 && n <= 50);
+            
+            if(numbers.length !== 6 || new Set(numbers).size !== 6) {
+                return alert('手動開獎號碼格式錯誤：請確認輸入了「剛好 6 個」不重複且介於 0~50 之間的數字！');
+            }
+
+            if(!confirm('確定要以此 6 個號碼作為最終開獎結果嗎？\n開出號碼：' + numbers.join(', '))) return;
+
+            // 將手動輸入的號碼寫入 Firebase
+            db.ref('lottery/drawnNumbers').set(numbers)
+                .then(() => {
+                    alert('🎉 手動開獎發布成功！');
+                    document.getElementById('manualDrawnNumbers').value = ''; // 清空輸入框
+                })
+                .catch((error) => alert('❌ 開獎發布失敗：' + error.message));
+        });
+
+        // 隨機開獎 (保留原功能)
+        document.getElementById('btnDraw').addEventListener('click', function() {
+            if(!confirm('確定要讓系統隨機產生 6 個號碼開獎嗎？')) return;
             let nums = new Set();
             while(nums.size < 6) nums.add(Math.floor(Math.random() * 51));
             
-            // 將開獎號碼寫入 Firebase
-            set(ref(db, 'lottery/drawnNumbers'), Array.from(nums));
+            db.ref('lottery/drawnNumbers').set(Array.from(nums))
+                .then(() => alert('🎉 隨機開獎成功！'))
+                .catch((error) => alert('❌ 開獎失敗：' + error.message));
         });
 
         // 重新遊戲
-        document.getElementById('btnReset').addEventListener('click', () => {
-            if(!confirm('警告：這將清空所有紀錄！')) return;
-            // 清空 Firebase 上的 lottery 節點
-            set(ref(db, 'lottery'), null);
+        document.getElementById('btnReset').addEventListener('click', function() {
+            if(!confirm('警告：這將清空所有紀錄與名單！')) return;
+            db.ref('lottery').set(null)
+                .then(() => alert('🧹 資料庫已重置！'))
+                .catch((error) => alert('❌ 重置失敗：' + error.message));
         });
 
         // 監聽名單變動，更新畫面
-        onValue(ref(db, 'lottery/participants'), (snapshot) => {
+        db.ref('lottery/participants').on('value', function(snapshot) {
             const list = document.getElementById('participantList');
             list.innerHTML = '';
             if(snapshot.exists()) {
