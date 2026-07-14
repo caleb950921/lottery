@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>即時抽獎結果</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #f4f4f9; padding: 20px; }
+        .numbers { font-size: 2em; color: #d32f2f; font-weight: bold; margin: 20px 0; }
+        .board { background: white; max-width: 600px; margin: 0 auto; padding: 20px; border-radius: 10px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 10px; }
+        th { background: #333; color: white; }
+    </style>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body>
+    <div class="board">
+        <h1>開獎號碼</h1>
+        <div id="drawnNumbers" class="numbers">等待開獎中...</div>
+        
+        <h2>中獎名單 (對中2碼以上)</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>排名</th>
+                    <th>姓名</th>
+                    <th>對中數量</th>
+                    <th>選定號碼</th>
+                </tr>
+            </thead>
+            <tbody id="resultsTable">
+                <tr><td colspan="4">目前無資料</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script>
+        // ⚠️ 貼上你的 Firebase 金鑰
+       const firebaseConfig = {
+  apiKey: "AIzaSyCF1Xi6B-xSiCeeAQauA3YQrlfC9nAz5TM",
+  authDomain: "lottery-cea2d.firebaseapp.com",
+  databaseURL: "https://lottery-cea2d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "lottery-cea2d",
+  storageBucket: "lottery-cea2d.firebasestorage.app",
+  messagingSenderId: "1085744042767",
+  appId: "1:1085744042767:web:ef2967f50d9e8b4aafe47a",
+  measurementId: "G-DCKN0TWXJY"
+};
+
+        // 初始化 Firebase
+        try {
+            firebase.initializeApp(firebaseConfig);
+            var db = firebase.database();
+        } catch (error) {
+            alert("Firebase 初始化失敗：" + error.message);
+        }
+
+        // 即時監聽 Firebase 資料庫變化
+        db.ref('lottery').on('value', function(snapshot) {
+            const numDiv = document.getElementById('drawnNumbers');
+            const tbody = document.getElementById('resultsTable');
+            
+            if(!snapshot.exists()) {
+                numDiv.innerText = '等待開獎中...';
+                tbody.innerHTML = '<tr><td colspan="4">目前無資料</td></tr>';
+                return;
+            }
+
+            const data = snapshot.val();
+            const participants = data.participants ? Object.values(data.participants) : [];
+            const drawnNumbers = data.drawnNumbers || [];
+
+            // 顯示開獎號碼
+            if(drawnNumbers.length > 0) {
+                numDiv.innerText = drawnNumbers.join(' , ');
+            } else {
+                numDiv.innerText = '等待開獎中...';
+            }
+
+            // 計算得獎結果
+            let results = participants.map(p => {
+                let matchCount = p.numbers.filter(n => drawnNumbers.includes(n)).length;
+                return { ...p, matchCount };
+            })
+            .filter(p => p.matchCount >= 2)
+            .sort((a, b) => b.matchCount - a.matchCount);
+
+            // 更新排行榜
+            tbody.innerHTML = '';
+            if (drawnNumbers.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4">等待管理員開獎中...</td></tr>';
+            } else if (results.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="color: red;">很遺憾，本次無人中獎</td></tr>';
+            } else {
+                results.forEach((winner, index) => {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td>${index + 1}</td>
+                        <td>${winner.name}</td>
+                        <td style="color:red; font-weight:bold;">${winner.matchCount}</td>
+                        <td>${winner.numbers.join(', ')}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            }
+        }, function(error) {
+            alert("讀取資料失敗：" + error.message);
+        });
+    </script>
+</body>
+</html>
